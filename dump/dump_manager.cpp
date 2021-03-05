@@ -79,7 +79,7 @@ bool Manager::isMasterProc(struct pdbg_target* proc) const
     }
 
     // Attribute value 0 corresponds to primary processor
-    if (type == 0)
+    if (type == ENUM_ATTR_PROC_MASTER_TYPE_ACTING_MASTER)
     {
         return true;
     }
@@ -108,7 +108,10 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
 
     if (pib == NULL)
     {
-        log<level::ERR>("No valid PIB target found");
+        log<level::ERR>(fmt::format("No valid PIB target found dump type({}), "
+                                    "clockstate({}), proc position({}",
+                                    type, clockState, chipPos)
+                            .c_str());
         throw std::runtime_error("No valid pib target found");
     }
 
@@ -121,8 +124,9 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
     uint32_t len = 0;
 
     log<level::INFO>(
-        fmt::format("Collecting dump type({}), clockstate({}), position({})",
-                    type, clockState, chipPos)
+        fmt::format(
+            "Collecting dump type({}), clockstate({}), proc position({})", type,
+            clockState, chipPos)
             .c_str());
     if ((error = sbe_dump(pib, type, clockState, collectFastArray,
                           dataPtr.getPtr(), &len)) < 0)
@@ -130,10 +134,11 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
         // Add a trace if the failure is on the secondary.
         if ((!isMasterProc(proc)) && (type == SBE::SBE_DUMP_TYPE_HOSTBOOT))
         {
-            log<level::ERR>(fmt::format("Error in collecting dump from "
-                                        "secondary, chip_position({}) skipping",
-                                        chipPos)
-                                .c_str());
+            log<level::ERR>(
+                fmt::format("Error in collecting dump from "
+                            "secondary SBE, chip_position({}) skipping",
+                            chipPos)
+                    .c_str());
             return;
         }
         log<level::ERR>(
@@ -167,12 +172,12 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
     // Filename format: <dump_id>.SbeDataClocks<On/Off>.node0.proc<number>
     std::stringstream ss;
     ss << std::setw(8) << std::setfill('0') << id;
-    std::string idStr = ss.str();
 
     std::string clockStr = (clockState == SBE::SBE_CLOCK_ON) ? "On" : "Off";
 
-    std::string filename = idStr + ".SbeDataClocks" + clockStr + ".node0.proc" +
-                           std::to_string(chipPos);
+    // Assuming only node0 is supported now
+    std::string filename = ss.str() + ".SbeDataClocks" + clockStr +
+                           ".node0.proc" + std::to_string(chipPos);
     dumpPath /= filename;
 
     std::ofstream outfile{dumpPath, std::ios::out | std::ios::binary};
@@ -185,7 +190,7 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
         log<level::ERR>(
             fmt::format(
                 "Error opening file to write dump, errno({}), filepath({})",
-                err, dumpPath.c_str())
+                err, dumpPath.string())
                 .c_str());
         report<Open>(metadata::ERRNO(err), metadata::PATH(dumpPath.c_str()));
         // Just return here, so that the dumps collected from other
@@ -208,7 +213,7 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
         log<level::ERR>(fmt::format("Failed to write to dump file, "
                                     "errorMsg({}), error({}), filepath({})",
                                     oe.what(), oe.code().value(),
-                                    dumpPath.c_str())
+                                    dumpPath.string())
                             .c_str());
         report<Write>(metadata::ERRNO(oe.code().value()),
                       metadata::PATH(dumpPath.c_str()));
@@ -227,7 +232,12 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId,
 {
     struct pdbg_target* target;
     bool failed = false;
-    pdbg_targets_init(NULL);
+
+    if (!pdbg_targets_init(NULL))
+    {
+        log<level::ERR>("pdbg_targets_init failed");
+        throw std::runtime_error("pdbg target initialization failed");
+    }
     pdbg_set_loglevel(PDBG_INFO);
 
     std::filesystem::path dumpPath(dumpInfo[type].dumpCollectionPath);
@@ -239,11 +249,9 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId,
     }
     catch (std::filesystem::filesystem_error& e)
     {
-        log<level::ERR>(
-            fmt::format(
-                "Error creating dump directories, dump_type({}), path({})",
-                type, sbeFilePath.c_str())
-                .c_str());
+        log<level::ERR>(fmt::format("Error creating dump directories, path({})",
+                                    sbeFilePath.string())
+                            .c_str());
         report<InternalFailure>();
         std::exit(EXIT_FAILURE);
     }
@@ -258,8 +266,10 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId,
         auto err = errno;
         log<level::ERR>(fmt::format("Error opening file to write errorlog id, "
                                     "errno({}), filepath({})",
-                                    err, dumpPath.c_str())
+                                    err, dumpPath.string())
                             .c_str());
+        // Report the error and continue collection even if the error log id
+        // cannot be added
         report<Open>(metadata::ERRNO(err), metadata::PATH(dumpPath.c_str()));
     }
     else
@@ -280,8 +290,10 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId,
             log<level::ERR>(fmt::format("Failed to write errorlog id to file, "
                                         "errorMsg({}), error({}), filepath({})",
                                         oe.what(), oe.code().value(),
-                                        dumpPath.c_str())
+                                        dumpPath.string())
                                 .c_str());
+            // Report the error and continue with dump collection
+            // even if the error log id cannot be written to the file.
             report<Write>(metadata::ERRNO(oe.code().value()),
                           metadata::PATH(dumpPath.c_str()));
         }
@@ -326,17 +338,10 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId,
             }
 
             uint8_t collectFastArray = 0;
-            if (cstate == SBE::SBE_CLOCK_OFF)
+            if ((cstate == SBE::SBE_CLOCK_OFF) &&
+                (type == SBE::SBE_DUMP_TYPE_HOSTBOOT))
             {
-                if (type == SBE::SBE_DUMP_TYPE_HOSTBOOT)
-                {
-                    collectFastArray = 1;
-                }
-                if ((type == SBE::SBE_DUMP_TYPE_HARDWARE) &&
-                    (chipPos == failingUnit))
-                {
-                    collectFastArray = 1;
-                }
+                collectFastArray = 1;
             }
 
             pid_t pid = fork();
@@ -380,7 +385,8 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId,
             if (WEXITSTATUS(status))
             {
                 log<level::ERR>(
-                    fmt::format("Dump collection failed, status({})", status)
+                    fmt::format("Dump collection failed, status({}) pid({})",
+                                status, p)
                         .c_str());
                 failed = true;
             }
@@ -401,8 +407,6 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId,
 sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
 {
     using namespace phosphor::logging;
-    DumpCreateParams createDumpParams;
-    sdbusplus::message::object_path newDumpPath;
     using InvalidArgument =
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument;
     using CreateParameters =
@@ -454,9 +458,9 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
     {
         // An error will be logged if the error log id is larger than maximum
         // value and set the error log id as 0.
-        log<level::ERR>(fmt::format("Error log id is greater than maximum "
+        log<level::ERR>(fmt::format("Error log id is greater than maximum({}) "
                                     "length, setting as 0, errorid({})",
-                                    errorId)
+                                    MAX_ERROR_LOG_ID, errorId)
                             .c_str());
         report<InvalidArgument>(
             Argument::ARGUMENT_NAME("ERROR_LOG_ID"),
@@ -527,8 +531,12 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
         }
     }
 
+    sdbusplus::message::object_path newDumpPath;
     try
     {
+        // Pass empty create parameters since no additional parameters
+        // are needed.
+        DumpCreateParams createDumpParams;
         auto dumpManager =
             util::getService(bus, DUMP_CREATE_IFACE, dumpInfo[type].dumpPath);
 
@@ -555,14 +563,13 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
         }
     }
 
-    // DUMP Path format /xyz/openbmc_project/dump/<dump_type>/entry/<id>
+    // DUMP Path format /xyz/openbmc_project/dump/hostboot/entry/<id>
     std::string pathStr = newDumpPath;
     auto pos = pathStr.rfind("/");
     if (pos == std::string::npos)
     {
         log<level::ERR>(
-            fmt::format("Invalid dump path, path({})", pathStr.c_str())
-                .c_str());
+            fmt::format("Invalid dump path, path({})", pathStr).c_str());
         elog<InternalFailure>();
     }
 
@@ -602,12 +609,11 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
                 else
                 {
                     log<level::ERR>("Dump collection failed, updating status");
-                    auto dumpManager =
-                        util::getService(bus, DUMP_PROGRESS_IFACE, pathStr);
-                    std::string failed = "xyz.openbmc_project.Common.Progress."
-                                         "OperationStatus.Failed";
                     util::setProperty(DUMP_PROGRESS_IFACE, STATUS_PROP, pathStr,
-                                      dumpManager, bus, failed);
+                                      bus,
+                                      std::variant<std::string>(
+                                          "xyz.openbmc_project.Common.Progress."
+                                          "OperationStatus.Failed"));
                 }
             };
         try
@@ -639,6 +645,14 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
         }
         catch (const InternalFailure& e)
         {
+            commit<InternalFailure>();
+        }
+        catch (const sdbusplus::exception::exception& e)
+        {
+            log<level::ERR>(
+                fmt::format("Unable to update the dump status, errorMsg({})",
+                            e.what())
+                    .c_str());
             commit<InternalFailure>();
         }
     }

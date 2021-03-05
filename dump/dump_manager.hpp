@@ -24,16 +24,17 @@ using CreateIface = sdbusplus::server::object::object<
 
 /** @struct DumpPtr
  * @brief a structure holding the data pointer
- * @details This is a RA11 containar for the dump data
+ * @details This is a RAII container for the dump data
  * returned by the SBE
  */
 struct DumpDataPtr
 {
   public:
-    /** @brief Distructor for the object, free the allocated memory.
+    /** @brief Destructor for the object, free the allocated memory.
      */
     ~DumpDataPtr()
     {
+        // The memory is allocated using malloc
         free(dataPtr);
     }
 
@@ -52,8 +53,7 @@ struct DumpDataPtr
     }
 
   private:
-    /** The pointer to the data
-     */
+    /** The pointer to the data */
     uint8_t* dataPtr = NULL;
 };
 
@@ -84,7 +84,8 @@ class Manager : public CreateIface
     {}
 
     /** @brief Implementation for createDump
-     *  Method to request a host dump when there is an error related to host.
+     *  Method to request a host dump when there is an error related to
+     *  host hardware or firmware.
      *  @param[in] params - Parameters for creating the dump.
      *
      *  @return object_path - The object path of the new dump entry.
@@ -110,17 +111,16 @@ class Manager : public CreateIface
     bool isMasterProc(struct pdbg_target* proc) const;
 
     /** @brief The function to orchestrate dump collection from different
-     *  sources
+     *  SBEs
      *  @param type - Type of the dump
      *  @param id - A unique id assigned to dump to be collected
      *  @param errorLogId - Id of the error log associated with this collection
-     *  @param failingUnit - Chip position of the failing unit
      */
-    void collectDump(uint8_t type, uint32_t id, std::string errorLogId,
-                     const uint64_t failingUnit);
+    void collectDump(uint8_t type, uint32_t id, std::string errorLogId);
 
     /** @brief The function to collect dump from SBE
-     *  @param[in] proc - pdbg_target of the SBE to collect the dump.
+     *  @param[in] proc - pdbg_target of the proc conating SBE to collect the
+     * dump.
      *  @param[in] dumpPath - Path of directory to write the dump files.
      *  @param[in] id - Id of the dump
      *  @param[in] type - Type of the dump

@@ -1,5 +1,7 @@
 #include "dump_utils.hpp"
 
+#include <fmt/core.h>
+
 #include <phosphor-logging/log.hpp>
 
 #include <string>
@@ -10,16 +12,14 @@ namespace dump
 {
 namespace util
 {
-// Mapper
-constexpr auto MAPPER_BUSNAME = "xyz.openbmc_project.ObjectMapper";
-constexpr auto MAPPER_PATH = "/xyz/openbmc_project/object_mapper";
-constexpr auto MAPPER_INTERFACE = "xyz.openbmc_project.ObjectMapper";
-
 using namespace phosphor::logging;
 
 std::string getService(sdbusplus::bus::bus& bus, const std::string& intf,
                        const std::string& path)
 {
+    constexpr auto MAPPER_BUSNAME = "xyz.openbmc_project.ObjectMapper";
+    constexpr auto MAPPER_PATH = "/xyz/openbmc_project/object_mapper";
+    constexpr auto MAPPER_INTERFACE = "xyz.openbmc_project.ObjectMapper";
     try
     {
         auto mapper = bus.new_method_call(MAPPER_BUSNAME, MAPPER_PATH,
@@ -33,18 +33,21 @@ std::string getService(sdbusplus::bus::bus& bus, const std::string& intf,
 
         if (mapperResponse.empty())
         {
-            log<level::ERR>("ERROR in reading the mapper response");
-            throw std::runtime_error("ERROR in reading the mapper response");
+            log<level::ERR>(fmt::format("Empty mapper response for GetObject "
+                                        "interface({}), path({})",
+                                        intf, path)
+                                .c_str());
+            throw std::runtime_error("Empty mapper response for GetObject");
         }
         return mapperResponse.begin()->first;
     }
     catch (const sdbusplus::exception::SdBusError& ex)
     {
-        log<level::ERR>("Mapper call failed", entry("METHOD=%d", "GetObject"),
-                        entry("ERROR=%s", ex.what()),
-                        entry("PATH=%s", path.c_str()),
-                        entry("INTERFACE=%s", intf.c_str()));
-        throw std::runtime_error("Mapper call failed");
+        log<level::ERR>(fmt::format("Mapper call failed for GetObject "
+                                    "errorMsg({}), path({}), interface({}) ",
+                                    ex.what(), path, intf)
+                            .c_str());
+        throw std::runtime_error("Mapper call failed to get D-Bus name");
     }
 }
 } // namespace util

@@ -95,7 +95,6 @@ else
     watchdog_lib = []
 endif
 
-
 # list of unit files, the path as input and service name
 # as output
 # eg: unit_file += {'input:'<path>, 'output':<service name>}

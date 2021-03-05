@@ -42,5 +42,3 @@ Where
     if an invalid number is passed.
 - FAILING UNIT ID is an 8bit number indicating the id of the failing processor
   and the maximum allowed value is 32.
-
-
