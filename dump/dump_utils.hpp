@@ -11,8 +11,6 @@ namespace dump
 namespace util
 {
 
-constexpr auto PROPERTY_INTF = "org.freedesktop.DBus.Properties";
-
 /**
  * @brief Get DBUS service for input interface via mapper call
  *
@@ -36,13 +34,15 @@ std::string getService(sdbusplus::bus::bus& bus, const std::string& intf,
  */
 template <typename T>
 void setProperty(const std::string& interface, const std::string& propertyName,
-                 const std::string& path, const std::string& service,
-                 sdbusplus::bus::bus& bus, T& value)
+                 const std::string& path, sdbusplus::bus::bus& bus,
+                 const T& value)
 {
-    std::variant<T> propertyValue(value);
+    constexpr auto PROPERTY_INTF = "org.freedesktop.DBus.Properties";
+
+    auto service = getService(bus, interface, path);
     auto method = bus.new_method_call(service.c_str(), path.c_str(),
                                       PROPERTY_INTF, "Set");
-    method.append(interface, propertyName, propertyValue);
+    method.append(interface, propertyName, value);
     auto reply = bus.call(method);
 }
 
