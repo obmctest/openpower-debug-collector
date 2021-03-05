@@ -95,6 +95,16 @@ else
     watchdog_lib = []
 endif
 
+
+# list of unit files, the path as input and service name
+# as output
+# eg: unit_file += {'input:'<path>, 'output':<service name>}
+unit_files = []
+
+if get_option('dump-collection').enabled()
+    subdir('dump')
+endif
+
 executable('watchdog_timeout',
     'watchdog_timeout.cpp',
     configure_file(output: 'config.h', configuration: conf_data),
@@ -114,3 +124,17 @@ executable('checkstop_app',
     implicit_include_directories: true,
     install: true
 )
+
+unit_subs = configuration_data()
+unit_subs.set('bindir', join_paths(get_option('prefix'), get_option('bindir')))
+systemd_system_unit_dir = dependency('systemd').get_variable(
+    pkgconfig: 'systemdsystemunitdir')
+foreach u : unit_files
+    configure_file(
+        configuration: unit_subs,
+        input: u.get('input'),
+        install: true,
+        install_dir: systemd_system_unit_dir,
+        output: u.get('output')
+    )
+endforeach
