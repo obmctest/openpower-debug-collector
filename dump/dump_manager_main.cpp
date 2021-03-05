@@ -15,6 +15,6 @@ int main()
     openpower::dump::Manager mgr(bus, OP_DUMP_OBJPATH, event);
 
     bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
-    event.loop();
-    return 0;
+    int rc = event.loop();
+    return rc;
 }
