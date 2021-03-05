@@ -23,6 +23,6 @@ busctl --verbose call org.open_power.Dump.Manager
 
 Where
 - DUMPTYPE is a valid dump type listed [here](https://github.com/openbmc/phosphor-dbus-interfaces/blob/master/yaml/com/ibm/Dump/Create.interface.yaml)
-- ERROR LOG ID is a 32bit decimal number.
-  - An error will be logged and dump will be collected with error log id as 0
+- ERROR LOG ID is a 32bit number.
+  - An error will be logged and dump will be collected with error log id as 0,
     if an invalid number is passed.

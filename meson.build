@@ -119,16 +119,3 @@ executable('checkstop_app',
     install: true
 )
 
-unit_subs = configuration_data()
-unit_subs.set('bindir', join_paths(get_option('prefix'), get_option('bindir')))
-systemd_system_unit_dir = dependency('systemd').get_variable(
-    pkgconfig: 'systemdsystemunitdir')
-foreach u : unit_files
-    configure_file(
-        configuration: unit_subs,
-        input: u[0] + '.in',
-        install: true,
-        install_dir: systemd_system_unit_dir,
-        output: u[1]
-    )
-endforeach
