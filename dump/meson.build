@@ -1,16 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
-unit_files += [
-        ['dump/org.open_power.Dump.Manager.service',
-         'org.open_power.Dump.Manager.service'],
-]
-
 cxx = meson.get_compiler('cpp')
 
 dump_deps = [
     systemd,
     sdbusplus,
     phosphorlogging,
+    fmt_dep,
     cxx.find_library('sdeventplus'),
     cxx.find_library('pdbg'),
     cxx.find_library('libdt-api'),
