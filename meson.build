@@ -94,7 +94,11 @@ else
     conf_data.set('HOSTBOOT_DUMP_COLLECTION', false)
     watchdog_lib = []
 
+# list of unit files, the path as input and service name
+# as output
+# eg: unit_file += {'input:'<path>, 'output':<service name>}
 unit_files = []
+
 if get_option('dump-collection').enabled()
     subdir('dump')
 endif
@@ -119,3 +123,16 @@ executable('checkstop_app',
     install: true
 )
 
+unit_subs = configuration_data()
+unit_subs.set('bindir', join_paths(get_option('prefix'), get_option('bindir')))
+systemd_system_unit_dir = dependency('systemd').get_variable(
+    pkgconfig: 'systemdsystemunitdir')
+foreach u : unit_files
+    configure_file(
+        configuration: unit_subs,
+        input: u.get('input'),
+        install: true,
+        install_dir: systemd_system_unit_dir,
+        output: u.get('output')
+    )
+endforeach
