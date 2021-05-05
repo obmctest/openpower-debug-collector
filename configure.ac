@@ -57,9 +57,9 @@ AS_IF([test "x$enable_dump_collection" == "xyes"], [
     LIBS="$LIBS $LIBDT_API_LIBS"
     CFLAGS="$CFLAGS $LIBDT_API_CFLAGS"
     AC_CONFIG_FILES([dump/org.open_power.Dump.Manager.service])
+    PKG_CHECK_MODULES([SDEVENTPLUS], [sdeventplus])
 ])
 
-PKG_CHECK_MODULES([SDEVENTPLUS], [sdeventplus])
 # Generate elog-errors.hpp if gen_errors optional feature is enabled
 AC_ARG_ENABLE([gen_errors],
     AS_HELP_STRING([--enable-gen_errors], [Enable elog-errors.hpp generation ]),
