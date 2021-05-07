@@ -23,7 +23,7 @@ busctl --verbose call org.open_power.Dump.Manager
 
 ## Hardware dump collection interface
 
-The host dump collection interface can be invoked in the following way
+The hardware dump collection interface can be invoked in the following way
 
 ```
 busctl --verbose call org.open_power.Dump.Manager
