@@ -25,6 +25,7 @@ extern "C"
 #include <chrono>
 #include <fstream>
 #include <system_error>
+#include <variant>
 #include <vector>
 
 namespace openpower
@@ -40,6 +41,7 @@ constexpr auto DUMP_NOTIFY_IFACE = "xyz.openbmc_project.Dump.NewDump";
 constexpr auto DUMP_PROGRESS_IFACE = "xyz.openbmc_project.Common.Progress";
 constexpr auto STATUS_PROP = "Status";
 constexpr auto OP_SBE_FILES_PATH = "plat_dump";
+constexpr auto MAX_ERROR_LOG_ID = 0xFFFFFFFF;
 
 /* @struct DumpTypeInfo
  * @brief to store basic info about different dump types
@@ -350,11 +352,10 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
     }
 }
 
-sdbusplus::message::object_path
-    Manager::createDump(std::map<std::string, std::string> params)
+sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
 {
     using namespace phosphor::logging;
-    std::vector<std::pair<std::string, std::string>> createDumpParams;
+    DumpCreateParams createDumpParams;
     sdbusplus::message::object_path newDumpPath;
     using InvalidArgument =
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument;
@@ -371,7 +372,7 @@ sdbusplus::message::object_path
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("DUMP_TYPE"),
                               Argument::ARGUMENT_VALUE("MISSING"));
     }
-    std::string dumpType = iter->second;
+    std::string dumpType = std::get<std::string>(iter->second);
 
     iter = params.find(
         sdbusplus::com::ibm::Dump::server::Create::
@@ -382,32 +383,40 @@ sdbusplus::message::object_path
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("ERROR_LOG_ID"),
                               Argument::ARGUMENT_VALUE("MISSING"));
     }
-    std::string elogId = iter->second;
 
-    // Convert error log id to number
-    uint32_t errorId = 0;
+    // get error log id
+    uint64_t errorId = 0;
     try
     {
-        errorId = std::stol(elogId);
+        errorId = std::get<uint64_t>(iter->second);
     }
-    catch (std::exception& e)
+    catch (const std::bad_variant_access& e)
     {
-        // Exception will be raised if the input doesnt fit to a long or
-        // an invalid number in the input string.
+        // Exception will be raised if the input is not uint64
         auto err = errno;
         log<level::ERR>("An ivalid error log id is passed, setting as 0",
-                        entry("ERROR_LOG_ID=%s", elogId.c_str()),
-                        entry("LENGTH=%d", elogId.length()),
-                        entry("ERRNO=%d", err),
+                        entry("DETAILS=%s", e.what()), entry("ERRNO=%d", err),
                         entry("ERROR=%s", strerror(err)));
         report<InvalidArgument>(Argument::ARGUMENT_NAME("ERROR_LOG_ID"),
-                                Argument::ARGUMENT_VALUE(elogId.c_str()));
+                                Argument::ARGUMENT_VALUE("INVALID INPUT"));
+    }
+
+    if (errorId > MAX_ERROR_LOG_ID)
+    {
+        // Exception will be raised if the error log id is larger than maximum
+        // value
+        log<level::ERR>(
+            "Error log id is greater than maximum length, setting as 0",
+            entry("errorid=%ull", errorId));
+        report<InvalidArgument>(
+            Argument::ARGUMENT_NAME("ERROR_LOG_ID"),
+            Argument::ARGUMENT_VALUE(std::to_string(errorId).c_str()));
     }
 
     // Make it 8 char length string.
     std::stringstream ss;
     ss << std::setw(8) << std::setfill('0') << std::hex << errorId;
-    elogId = ss.str();
+    std::string elogId = ss.str();
 
     uint8_t type = 0;
 
