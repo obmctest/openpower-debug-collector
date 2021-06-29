@@ -1,3 +1,8 @@
+extern "C"
+{
+#include <libpdbg_sbe.h>
+}
+
 #include "config.h"
 
 #include "dump_manager.hpp"
