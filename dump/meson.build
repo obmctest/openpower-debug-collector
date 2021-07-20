@@ -36,7 +36,7 @@ dump_src = files(
     'dump_manager_main.cpp',
 )
 
-executable('openpower-dump-collector',
+executable('openpower-dump-manager',
     dump_src,
     dependencies: dump_deps,
     implicit_include_directories: true,
