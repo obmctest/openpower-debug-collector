@@ -8,7 +8,7 @@ Before=mapper-wait@-org-open_power-dump-manager.service
 Conflicts=obmc-host-stop@0.target
 
 [Service]
-ExecStart=/usr/sbin/openpower-dump-manager
+ExecStart=/usr/bin/openpower-dump-manager
 Restart=always
 Type=dbus
 BusName={BUSNAME}
