@@ -31,8 +31,21 @@ phosphorlogging = dependency(
     ]
 )
 
+fmt_dep = dependency('fmt', required: false)
+if not fmt_dep.found()
+  fmt_proj = import('cmake').subproject(
+    'fmt',
+    cmake_options: [
+      '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
+      '-DMASTER_PROJECT=OFF'
+    ],
+    required: false)
+  assert(fmt_proj.found(), 'fmtlib is required')
+  fmt_dep = fmt_proj.dependency('fmt')
+endif
+
 deps = [
-    systemd, sdbusplus, phosphorlogging
+    systemd, sdbusplus, phosphorlogging, fmt_dep
 ]
 
 realpath_prog = find_program('realpath')
@@ -73,6 +86,9 @@ foreach g : generated_sources generated_others
     endforeach
 endforeach
 
+# list of unit files, the path as input and service name
+# as output
+# eg: unit_file += {'input:'<path>, 'output':<service name>}
 unit_files = []
 
 if get_option('dump-collection').enabled()
@@ -104,9 +120,9 @@ systemd_system_unit_dir = dependency('systemd').get_variable(
 foreach u : unit_files
     configure_file(
         configuration: unit_subs,
-        input: u[0] + '.in',
+        input: u.get('input'),
         install: true,
         install_dir: systemd_system_unit_dir,
-        output: u[1]
+        output: u.get('output')
     )
 endforeach

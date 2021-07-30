@@ -5,13 +5,13 @@ extern "C"
 
 #include "config.h"
 
-#include "dump_manager.hpp"
-
 #include "attributes_info.H"
 
+#include "dump_manager.hpp"
 #include "dump_utils.hpp"
 #include "sbe_consts.hpp"
 
+#include <fmt/core.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -24,6 +24,7 @@ extern "C"
 
 #include <chrono>
 #include <fstream>
+#include <string>
 #include <system_error>
 #include <variant>
 #include <vector>
@@ -42,6 +43,10 @@ constexpr auto DUMP_PROGRESS_IFACE = "xyz.openbmc_project.Common.Progress";
 constexpr auto STATUS_PROP = "Status";
 constexpr auto OP_SBE_FILES_PATH = "plat_dump";
 constexpr auto MAX_ERROR_LOG_ID = 0xFFFFFFFF;
+constexpr auto INVALID_FAILING_UNIT = 0xFF;
+
+// Maximum 32 processors are possible in a system.
+constexpr auto MAX_FAILING_UNIT = 0x20;
 
 /* @struct DumpTypeInfo
  * @brief to store basic info about different dump types
@@ -56,7 +61,8 @@ struct DumpTypeInfo
 std::map<uint8_t, DumpTypeInfo> dumpInfo = {
     {SBE::SBE_DUMP_TYPE_HOSTBOOT,
      {HB_DUMP_DBUS_OBJPATH, HB_DUMP_COLLECTION_PATH}},
-};
+    {SBE::SBE_DUMP_TYPE_HARDWARE,
+     {HW_DUMP_DBUS_OBJPATH, HW_DUMP_COLLECTION_PATH}}};
 
 bool Manager::isMasterProc(struct pdbg_target* proc) const
 {
@@ -87,10 +93,6 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
     using namespace sdbusplus::xyz::openbmc_project::Common::Error;
     namespace fileError = sdbusplus::xyz::openbmc_project::Common::File::Error;
 
-    // TODO #ibm-openbmc/dev/3039
-    // Check the SBE state before attempt the dump collection
-    // Skip this SBE if the SBE is not in a good state.
-
     struct pdbg_target* pib = NULL;
     pdbg_for_each_target("pib", proc, pib)
     {
@@ -107,22 +109,33 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
         throw std::runtime_error("No valid pib target found");
     }
 
+    // TODO #ibm-openbmc/dev/3039
+    // Check the SBE state before attempt the dump collection
+    // Skip this SBE if the SBE is not in a good state.
+
     int error = 0;
     DumpDataPtr dataPtr;
     uint32_t len = 0;
 
+    log<level::INFO>(
+        fmt::format("Collecting dump type({}), clockstate({}), position({})",
+                    type, clockState, chipPos)
+            .c_str());
     if ((error = sbe_dump(pib, type, clockState, collectFastArray,
                           dataPtr.getPtr(), &len)) < 0)
     {
         // Add a trace if the failure is on the secondary.
         if ((!isMasterProc(proc)) && (type == SBE::SBE_DUMP_TYPE_HOSTBOOT))
         {
-            log<level::ERR>("Error in collecting dump from secondary, skipping",
-                            entry("CHIPPOSITION=%d", chipPos));
+            log<level::ERR>(fmt::format("Error in collecting dump from "
+                                        "secondary, chip_position({}) skipping",
+                                        chipPos)
+                                .c_str());
             return;
         }
-        log<level::ERR>("Failed to collect dump",
-                        entry("CHIPPOSITION=%d", chipPos));
+        log<level::ERR>(
+            fmt::format("Failed to collect dump, chip_position({})", chipPos)
+                .c_str());
         // TODO Create a PEL in the future for this failure case.
         throw std::system_error(error, std::generic_category(),
                                 "Failed to collect dump from SBE");
@@ -134,12 +147,17 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
         if ((!isMasterProc(proc)) && (type == SBE::SBE_DUMP_TYPE_HOSTBOOT))
         {
             log<level::INFO>(
-                "No hostboot dump recieved from secondary SBE, skipping",
-                entry("CHIPPOSITION=%d", chipPos));
+                fmt::format("No hostboot dump recieved from secondary SBE, "
+                            "skipping, chip_position({})",
+                            chipPos)
+                    .c_str());
             return;
         }
-        log<level::ERR>("No data returned while collecting the dump",
-                        entry("CHIPPOSITION=%d", chipPos));
+        log<level::ERR>(
+            fmt::format(
+                "No data returned while collecting the dump chip_position({})",
+                chipPos)
+                .c_str());
         throw std::runtime_error("No data returned while collecting the dump");
     }
 
@@ -161,9 +179,11 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
         using metadata = xyz::openbmc_project::Common::File::Open;
         // Unable to open the file for writing
         auto err = errno;
-        log<level::ERR>("Error opening file to write dump ",
-                        entry("ERRNO=%d", err),
-                        entry("FILEPATH=%s", dumpPath.c_str()));
+        log<level::ERR>(
+            fmt::format(
+                "Error opening file to write dump, errno({}), filepath({})",
+                err, dumpPath.c_str())
+                .c_str());
         report<Open>(metadata::ERRNO(err), metadata::PATH(dumpPath.c_str()));
         // Just return here, so that the dumps collected from other
         // SBEs can be packaged.
@@ -182,20 +202,25 @@ void Manager::collectDumpFromSBE(struct pdbg_target* proc,
     {
         using namespace sdbusplus::xyz::openbmc_project::Common::File::Error;
         using metadata = xyz::openbmc_project::Common::File::Write;
-        log<level::ERR>("Failed to write to dump file ",
-                        entry("ERR=%s", oe.what()),
-                        entry("ERROR=%d", oe.code().value()),
-                        entry("FILEPATH=%s", dumpPath.c_str()));
+        log<level::ERR>(fmt::format("Failed to write to dump file, "
+                                    "errorMsg({}), error({}), filepath({})",
+                                    oe.what(), oe.code().value(),
+                                    dumpPath.c_str())
+                            .c_str());
         report<Write>(metadata::ERRNO(oe.code().value()),
                       metadata::PATH(dumpPath.c_str()));
         // Just return here so dumps collected from other SBEs can be
         // packaged.
         return;
     }
-    log<level::INFO>("Hostboot dump collected");
+    log<level::INFO>(
+        fmt::format("Dump collected type({}), clockstate({}), position({})",
+                    type, clockState, chipPos)
+            .c_str());
 }
 
-void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
+void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId,
+                          const uint64_t failingUnit)
 {
     struct pdbg_target* target;
     bool failed = false;
@@ -211,8 +236,11 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
     }
     catch (std::filesystem::filesystem_error& e)
     {
-        log<level::ERR>("Error creating dump directories",
-                        entry("FILEPATH=%s", sbeFilePath.c_str()));
+        log<level::ERR>(
+            fmt::format(
+                "Error creating dump directories, dump_type({}), path({})",
+                type, sbeFilePath.c_str())
+                .c_str());
         report<InternalFailure>();
         std::exit(EXIT_FAILURE);
     }
@@ -225,9 +253,10 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
         using metadata = xyz::openbmc_project::Common::File::Open;
         // Unable to open the file for writing
         auto err = errno;
-        log<level::ERR>("Error opening file to write errorlog id ",
-                        entry("ERRNO=%d", err),
-                        entry("FILEPATH=%s", dumpPath.c_str()));
+        log<level::ERR>(fmt::format("Error opening file to write errorlog id, "
+                                    "errno({}), filepath({})",
+                                    err, dumpPath.c_str())
+                            .c_str());
         report<Open>(metadata::ERRNO(err), metadata::PATH(dumpPath.c_str()));
     }
     else
@@ -245,10 +274,11 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
                 Error;
             using metadata = xyz::openbmc_project::Common::File::Write;
             // If there is an error commit the error and continue.
-            log<level::ERR>("Failed to write errorlog id to file ",
-                            entry("ERR=%s", oe.what()),
-                            entry("ERROR=%d", oe.code().value()),
-                            entry("FILEPATH=%s", dumpPath.c_str()));
+            log<level::ERR>(fmt::format("Failed to write errorlog id to file, "
+                                        "errorMsg({}), error({}), filepath({})",
+                                        oe.what(), oe.code().value(),
+                                        dumpPath.c_str())
+                                .c_str());
             report<Write>(metadata::ERRNO(oe.code().value()),
                           metadata::PATH(dumpPath.c_str()));
         }
@@ -293,10 +323,17 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
             }
 
             uint8_t collectFastArray = 0;
-            if ((cstate == SBE::SBE_CLOCK_OFF) &&
-                (type == SBE::SBE_DUMP_TYPE_HOSTBOOT))
+            if (cstate == SBE::SBE_CLOCK_OFF)
             {
-                collectFastArray = 1;
+                if (type == SBE::SBE_DUMP_TYPE_HOSTBOOT)
+                {
+                    collectFastArray = 1;
+                }
+                if ((type == SBE::SBE_DUMP_TYPE_HARDWARE) &&
+                    (chipPos == failingUnit))
+                {
+                    collectFastArray = 1;
+                }
             }
 
             pid_t pid = fork();
@@ -318,8 +355,11 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
                 }
                 catch (const std::runtime_error& error)
                 {
-                    log<level::ERR>("Failed to execute collection",
-                                    entry("ERR=%s", error.what()));
+                    log<level::ERR>(
+                        fmt::format(
+                            "Failed to execute collection, errorMsg({})",
+                            error.what())
+                            .c_str());
                     std::exit(EXIT_FAILURE);
                 }
                 std::exit(EXIT_SUCCESS);
@@ -336,11 +376,11 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
             waitpid(p, &status, 0);
             if (WEXITSTATUS(status))
             {
-                log<level::ERR>("Dump collection failed",
-                                entry("STATUS=%d", status));
+                log<level::ERR>(
+                    fmt::format("Dump collection failed, status({})", status)
+                        .c_str());
                 failed = true;
             }
-            log<level::INFO>("Dump collection completed");
         }
 
         // Exit if there is a critical failure and collection cannot continue
@@ -349,6 +389,9 @@ void Manager::collectDump(uint8_t type, uint32_t id, std::string errorLogId)
             log<level::ERR>("Failed to collect the dump");
             std::exit(EXIT_FAILURE);
         }
+        log<level::INFO>(
+            fmt::format("Dump collection completed for clock_state({})", cstate)
+                .c_str());
     }
 }
 
@@ -394,20 +437,22 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
     {
         // Exception will be raised if the input is not uint64
         auto err = errno;
-        log<level::ERR>("An ivalid error log id is passed, setting as 0",
-                        entry("DETAILS=%s", e.what()), entry("ERRNO=%d", err),
-                        entry("ERROR=%s", strerror(err)));
+        log<level::ERR>(fmt::format("An ivalid error log id is passed, setting "
+                                    "as 0, errorMsg({}), errno({}), error({})",
+                                    e.what(), err, strerror(err))
+                            .c_str());
         report<InvalidArgument>(Argument::ARGUMENT_NAME("ERROR_LOG_ID"),
                                 Argument::ARGUMENT_VALUE("INVALID INPUT"));
     }
 
     if (errorId > MAX_ERROR_LOG_ID)
     {
-        // Exception will be raised if the error log id is larger than maximum
-        // value
-        log<level::ERR>(
-            "Error log id is greater than maximum length, setting as 0",
-            entry("errorid=%ull", errorId));
+        // An error will be logged if the error log id is larger than maximum
+        // value and set the error log id as 0.
+        log<level::ERR>(fmt::format("Error log id is greater than maximum "
+                                    "length, setting as 0, errorid({})",
+                                    errorId)
+                            .c_str());
         report<InvalidArgument>(
             Argument::ARGUMENT_NAME("ERROR_LOG_ID"),
             Argument::ARGUMENT_VALUE(std::to_string(errorId).c_str()));
@@ -419,16 +464,62 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
     std::string elogId = ss.str();
 
     uint8_t type = 0;
+    uint64_t failingUnit = INVALID_FAILING_UNIT;
 
     if (dumpType == "com.ibm.Dump.Create.DumpType.Hostboot")
     {
         type = SBE::SBE_DUMP_TYPE_HOSTBOOT;
     }
+    else if (dumpType == "com.ibm.Dump.Create.DumpType.Hardware")
+    {
+        type = SBE::SBE_DUMP_TYPE_HARDWARE;
+    }
     else
     {
-        log<level::ERR>("Invalid dump type passed");
-        elog<InvalidArgument>(Argument::ARGUMENT_NAME("DUMP_TYPE"),
-                              Argument::ARGUMENT_VALUE(dumpType.c_str()));
+        log<level::ERR>(fmt::format("Invalid dump type passed dumpType({})",
+                                    dumpType.c_str())
+                            .c_str());
+    }
+
+    if (type == SBE::SBE_DUMP_TYPE_HARDWARE)
+    {
+        iter = params.find(sdbusplus::com::ibm::Dump::server::Create::
+                               convertCreateParametersToString(
+                                   CreateParameters::FailingUnitId));
+        if (iter == params.end())
+        {
+            log<level::ERR>("Required argument, failing unit id is not passed");
+            elog<InvalidArgument>(Argument::ARGUMENT_NAME("FAILING_UNIT_ID"),
+                                  Argument::ARGUMENT_VALUE("MISSING"));
+        }
+
+        try
+        {
+            failingUnit = std::get<uint64_t>(iter->second);
+        }
+        catch (const std::bad_variant_access& e)
+        {
+            // Exception will be raised if the input is not uint64
+            auto err = errno;
+            log<level::ERR>(
+                fmt::format("An invalid failing unit id is passed "
+                            "errorMsg({}), errno({}), errorString({})",
+                            e.what(), err, strerror(err))
+                    .c_str());
+            elog<InvalidArgument>(Argument::ARGUMENT_NAME("FAILING_UNIT_ID"),
+                                  Argument::ARGUMENT_VALUE("INVALID INPUT"));
+        }
+
+        if (failingUnit > MAX_FAILING_UNIT)
+        {
+            log<level::ERR>(fmt::format("Invalid failing uint id: greater than "
+                                        "maximum number: input({})",
+                                        failingUnit)
+                                .c_str());
+            elog<InvalidArgument>(
+                Argument::ARGUMENT_NAME("FAILING_UNIT_ID"),
+                Argument::ARGUMENT_VALUE(std::to_string(failingUnit).c_str()));
+        }
     }
 
     try
@@ -445,16 +536,20 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
-        log<level::ERR>("D-Bus call exception", entry("ERROR=%s", e.what()));
+        log<level::ERR>(
+            fmt::format("D-Bus call exception, errorMsg({})", e.what())
+                .c_str());
         elog<InternalFailure>();
     }
 
-    // DUMP Path format /xyz/openbmc_project/dump/hostboot/entry/<id>
+    // DUMP Path format /xyz/openbmc_project/dump/<dump_type>/entry/<id>
     std::string pathStr = newDumpPath;
     auto pos = pathStr.rfind("/");
     if (pos == std::string::npos)
     {
-        log<level::ERR>("Invalid dump path");
+        log<level::ERR>(
+            fmt::format("Invalid dump path, path({})", pathStr.c_str())
+                .c_str());
         elog<InternalFailure>();
     }
 
@@ -464,7 +559,7 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
     pid_t pid = fork();
     if (pid == 0)
     {
-        collectDump(type, id, elogId);
+        collectDump(type, id, elogId, failingUnit);
         std::exit(EXIT_SUCCESS);
     }
     else if (pid < 0)
@@ -481,6 +576,7 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
                 eventSource.set_enabled(Enabled::On);
                 if (si->si_status == 0)
                 {
+                    log<level::INFO>("Dump collected, initiating packaging");
                     auto dumpManager = util::getService(
                         bus, DUMP_NOTIFY_IFACE, dumpInfo[type].dumpPath);
                     auto method = bus.new_method_call(
@@ -492,6 +588,7 @@ sdbusplus::message::object_path Manager::createDump(DumpCreateParams params)
                 }
                 else
                 {
+                    log<level::ERR>("Dump collection failed, updating status");
                     auto dumpManager =
                         util::getService(bus, DUMP_PROGRESS_IFACE, pathStr);
                     std::string failed = "xyz.openbmc_project.Common.Progress."

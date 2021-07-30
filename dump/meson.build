@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
-unit_files += [
-        ['dump/org.open_power.Dump.Manager.service',
-         'org.open_power.Dump.Manager.service'],
-]
+unit_files += {'input':'dump/org.open_power.Dump.Manager.service',
+         'output':'org.open_power.Dump.Manager.service'}
 
 cxx = meson.get_compiler('cpp')
 
@@ -11,6 +9,7 @@ dump_deps = [
     systemd,
     sdbusplus,
     phosphorlogging,
+    fmt_dep,
     cxx.find_library('sdeventplus'),
     cxx.find_library('pdbg'),
     cxx.find_library('libdt-api'),
@@ -26,6 +25,10 @@ dump_conf_data.set_quoted('HB_DUMP_DBUS_OBJPATH', get_option('HB_DUMP_DBUS_OBJPA
                      description : 'The hostboot dump manager path')
 dump_conf_data.set_quoted('HB_DUMP_COLLECTION_PATH', get_option('HB_DUMP_COLLECTION_PATH'),
                      description : 'The path to store collected hostboot dump files')
+dump_conf_data.set_quoted('HW_DUMP_DBUS_OBJPATH', get_option('HW_DUMP_DBUS_OBJPATH'),
+                     description : 'The hardware dump manager path')
+dump_conf_data.set_quoted('HW_DUMP_COLLECTION_PATH', get_option('HW_DUMP_COLLECTION_PATH'),
+                     description : 'The path to store collected hardware dump files')
 configure_file(configuration : dump_conf_data,
                output : 'config.h')
 
