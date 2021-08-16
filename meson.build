@@ -94,6 +94,7 @@ else
     conf_data.set('HOSTBOOT_DUMP_COLLECTION', false)
     watchdog_lib = []
 
+
 # list of unit files, the path as input and service name
 # as output
 # eg: unit_file += {'input:'<path>, 'output':<service name>}
