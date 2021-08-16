@@ -93,6 +93,7 @@ if get_option('hostboot-dump-collection').enabled()
 else
     conf_data.set('HOSTBOOT_DUMP_COLLECTION', false)
     watchdog_lib = []
+endif
 
 
 # list of unit files, the path as input and service name
