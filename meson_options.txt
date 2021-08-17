@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
+# Feature to enable hostboot dump collection when watchdog times out
+option('hostboot-dump-collection',
+       type: 'feature',
+       value: 'disabled',
+       description : 'Enables hostboot dump collection')
+
 # The options and values for dump collection
 option('OP_DUMP_OBJPATH', type : 'string',
         value : '/org/openpower/dump',
