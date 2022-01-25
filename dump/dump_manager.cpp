@@ -39,14 +39,19 @@ using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 
 constexpr auto DUMP_CREATE_IFACE = "xyz.openbmc_project.Dump.Create";
+constexpr auto ERROR_DUMP_DISABLED =
+    "xyz.openbmc_project.Dump.Create.Error.Disabled";
+constexpr auto ERROR_DUMP_QUOTA_EXCEEDED =
+    "xyz.openbmc_project.Dump.Create.Error.QuotaExceeded";
+constexpr auto ERROR_DUMP_NOT_ALLOWED =
+    "xyz.openbmc_project.Common.Error.NotAllowed";
+constexpr auto OP_SBE_FILES_PATH = "plat_dump";
 constexpr auto DUMP_NOTIFY_IFACE = "xyz.openbmc_project.Dump.NewDump";
 constexpr auto DUMP_PROGRESS_IFACE = "xyz.openbmc_project.Common.Progress";
 constexpr auto STATUS_PROP = "Status";
 constexpr auto OP_SBE_FILES_PATH = "plat_dump";
 constexpr auto MAX_ERROR_LOG_ID = 0xFFFFFFFF;
 constexpr auto INVALID_FAILING_UNIT = 0xFF;
-constexpr auto ERROR_DUMP_DISABLED =
-    "xyz.openbmc_project.Dump.Create.Error.Disabled";
 
 // Maximum 32 processors are possible in a system.
 constexpr auto MAX_FAILING_UNIT = 0x20;
@@ -78,8 +83,6 @@ sdbusplus::message::object_path
     using CreateParameters =
         sdbusplus::com::ibm::Dump::server::Create::CreateParameters;
     using Argument = xyz::openbmc_project::Common::InvalidArgument;
-    using DumpDisabled =
-        sdbusplus::xyz::openbmc_project::Dump::Create::Error::Disabled;
 
     auto iter = params.find(
         sdbusplus::com::ibm::Dump::server::Create::
@@ -227,7 +230,23 @@ sdbusplus::message::object_path
                 .c_str());
         if (e.name() == ERROR_DUMP_DISABLED)
         {
-            elog<DumpDisabled>();
+            elog<dbusplus::xyz::openbmc_project::Dump::Create::Error::
+                     Disabled>();
+        }
+        if (e.name() == ERROR_DUMP_QUOTA_EXCEEDED)
+        {
+            using DumpQuotaExceeded = sdbusplus::xyz::openbmc_project::Dump::
+                Create::Error::QuotaExceeded;
+            using Reason =
+                xyz::openbmc_project::Dump::Create::QuotaExceeded::REASON;
+            elog<DumpQuotaExceeded>(Reason(e.description()));
+        }
+        if (e.name() == ERROR_DUMP_NOT_ALLOWED)
+        {
+            using DumpNotAllowed =
+                sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
+            using Reason = xyz::openbmc_project::Common::NotAllowed::REASON;
+            elog<DumpNotAllowed>(Reason(e.description()));
         }
         else
         {
