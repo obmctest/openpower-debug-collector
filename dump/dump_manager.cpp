@@ -49,7 +49,6 @@ constexpr auto OP_SBE_FILES_PATH = "plat_dump";
 constexpr auto DUMP_NOTIFY_IFACE = "xyz.openbmc_project.Dump.NewDump";
 constexpr auto DUMP_PROGRESS_IFACE = "xyz.openbmc_project.Common.Progress";
 constexpr auto STATUS_PROP = "Status";
-constexpr auto OP_SBE_FILES_PATH = "plat_dump";
 constexpr auto MAX_ERROR_LOG_ID = 0xFFFFFFFF;
 constexpr auto INVALID_FAILING_UNIT = 0xFF;
 
@@ -230,7 +229,7 @@ sdbusplus::message::object_path
                 .c_str());
         if (e.name() == ERROR_DUMP_DISABLED)
         {
-            elog<dbusplus::xyz::openbmc_project::Dump::Create::Error::
+            elog<sdbusplus::xyz::openbmc_project::Dump::Create::Error::
                      Disabled>();
         }
         if (e.name() == ERROR_DUMP_QUOTA_EXCEEDED)
