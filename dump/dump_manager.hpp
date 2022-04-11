@@ -15,6 +15,16 @@ namespace openpower
 {
 namespace dump
 {
+/* Need a custom deleter for freeing up sd_event */
+struct EventDeleter
+{
+    void operator()(sd_event* event) const
+    {
+        event = sd_event_unref(event);
+    }
+};
+
+using EventPtr = std::unique_ptr<sd_event, EventDeleter>;
 
 using CreateIface = sdbusplus::server::object::object<
     sdbusplus::com::ibm::Dump::server::Create,
@@ -40,10 +50,8 @@ class Manager : public CreateIface
      *  @param[in] path - Path of the service.
      *  @param[in] event - sd event handler.
      */
-    Manager(sdbusplus::bus::bus& bus, const char* path,
-            sdeventplus::Event& event) :
-        CreateIface(bus, path, true),
-        bus(bus), event(event)
+    Manager(sdbusplus::bus::bus& bus, const char* path, const EventPtr& event) :
+        CreateIface(bus, path, true), bus(bus), eventLoop(event.get())
     {}
 
     /** @brief Implementation for createDump
@@ -61,10 +69,7 @@ class Manager : public CreateIface
     sdbusplus::bus::bus& bus;
 
     /** @brief sdbusplus Dump event loop */
-    sdeventplus::Event& event;
-
-    /** @brief SDEventPlus child pointer added to event loop */
-    std::unique_ptr<sdeventplus::source::Child> childPtr = nullptr;
+    EventPtr eventLoop;
 };
 
 } // namespace dump
