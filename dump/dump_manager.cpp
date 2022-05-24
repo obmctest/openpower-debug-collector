@@ -343,36 +343,13 @@ sdbusplus::message::object_path
         dumpPath /= OP_SBE_FILES_PATH;
 
         util::prepareCollection(dumpPath, elogId);
-        if ((type == SBE::SBE_DUMP_TYPE_HARDWARE) ||
-            (type == SBE::SBE_DUMP_TYPE_HOSTBOOT))
-        {
-            execl("/usr/bin/dump-collect", "dump-collect", "--type",
-                  std::to_string(type).c_str(), "--id",
-                  std::to_string(id).c_str(), "--path", dumpPath.c_str(),
-                  "--failingunit", std::to_string(failingUnit).c_str(),
-                  (char*)0);
-            log<level::ERR>(
-                fmt::format("Failed to start collection error({})", errno)
-                    .c_str());
-            std::exit(EXIT_FAILURE);
-        }
-        else if ((type == SBE::SBE_DUMP_TYPE_SBE))
-        {
-            try
-            {
-                openpower::phal::dump::collectSBEDump(id, failingUnit,
-                                                      dumpPath);
-            }
-            catch (const std::exception& e)
-            {
-                log<level::ERR>(
-                    fmt::format("Failed to collect SBE dump error({})",
-                                e.what())
-                        .c_str());
-                std::exit(EXIT_FAILURE);
-            }
-        }
-        std::exit(EXIT_SUCCESS);
+        execl("/usr/bin/dump-collect", "dump-collect", "--type",
+              std::to_string(type).c_str(), "--id", std::to_string(id).c_str(),
+              "--path", dumpPath.c_str(), "--failingunit",
+              std::to_string(failingUnit).c_str(), (char*)0);
+        log<level::ERR>(
+            fmt::format("Failed to start collection error({})", errno).c_str());
+        std::exit(EXIT_FAILURE);
     }
     else if (pid < 0)
     {
