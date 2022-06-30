@@ -19,6 +19,8 @@ extern "C"
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/exception.hpp>
+#include <sdeventplus/exception.hpp>
+#include <sdeventplus/source/base.hpp>
 #include <xyz/openbmc_project/Common/File/error.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/Dump/Create/error.hpp>
@@ -85,55 +87,6 @@ struct DumpData
         id(id), type(type), pathStr(pathStr)
     {}
 };
-
-static int callback(sd_event_source*, const siginfo_t* si, void* data)
-{
-    using namespace phosphor::logging;
-    using InternalFailure =
-        sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
-    DumpData* dumpData = reinterpret_cast<DumpData*>(data);
-    log<level::INFO>(
-        fmt::format("Updating status of path({})", dumpData->pathStr).c_str());
-    auto bus = sdbusplus::bus::new_system();
-    try
-    {
-        if (si->si_status == 0)
-        {
-            log<level::INFO>("Dump collected, initiating packaging");
-            auto dumpManager = util::getService(
-                bus, DUMP_NOTIFY_IFACE, dumpInfo[dumpData->type].dumpPath);
-            auto method = bus.new_method_call(
-                dumpManager.c_str(), dumpInfo[dumpData->type].dumpPath.c_str(),
-                DUMP_NOTIFY_IFACE, "Notify");
-            method.append(static_cast<uint32_t>(dumpData->id),
-                          static_cast<uint64_t>(0));
-            bus.call_noreply(method);
-        }
-        else
-        {
-            log<level::ERR>("Dump collection failed, updating status");
-            util::setProperty(
-                DUMP_PROGRESS_IFACE, STATUS_PROP, dumpData->pathStr, bus,
-                std::variant<std::string>("xyz.openbmc_project.Common.Progress."
-                                          "OperationStatus.Failed"));
-        }
-    }
-    catch (const InternalFailure& e)
-    {
-        commit<InternalFailure>();
-    }
-    catch (const sdbusplus::exception::exception& e)
-    {
-        log<level::ERR>(
-            fmt::format(
-                "Unable to update the dump status, errorMsg({}) path({})",
-                e.what(), dumpData->pathStr)
-                .c_str());
-        commit<InternalFailure>();
-    }
-    delete dumpData;
-    return 0;
-}
 
 sdbusplus::message::object_path
     Manager::createDump(util::DumpCreateParams params)
@@ -366,17 +319,74 @@ sdbusplus::message::object_path
                 "Adding handler for id({}), type({}), path({}), pid({})", id,
                 type, pathStr, pid)
                 .c_str());
-        DumpData* data = new DumpData(id, type, pathStr);
-        auto rc =
-            sd_event_add_child(eventLoop.get(), nullptr, pid,
-                               WEXITED | WSTOPPED, callback, (void*)(data));
-        if (0 > rc)
+        DumpData data(id, type, pathStr);
+
+        // callback
+        Child::Callback callback = [this, data, pid](Child&,
+                                                     const siginfo_t* si) {
+            using namespace phosphor::logging;
+            using InternalFailure =
+                sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
+            log<level::INFO>(
+                fmt::format("Updating status of path({})", data.pathStr)
+                    .c_str());
+            auto bus = sdbusplus::bus::new_system();
+            try
+            {
+                if (si->si_status == 0)
+                {
+                    log<level::INFO>("Dump collected, initiating packaging");
+                    auto dumpManager = util::getService(
+                        bus, DUMP_NOTIFY_IFACE, dumpInfo[data.type].dumpPath);
+                    auto method = bus.new_method_call(
+                        dumpManager.c_str(),
+                        dumpInfo[data.type].dumpPath.c_str(), DUMP_NOTIFY_IFACE,
+                        "Notify");
+                    method.append(static_cast<uint32_t>(data.id),
+                                  static_cast<uint64_t>(0));
+                    bus.call_noreply(method);
+                }
+                else
+                {
+                    log<level::ERR>("Dump collection failed, updating status");
+                    util::setProperty(DUMP_PROGRESS_IFACE, STATUS_PROP,
+                                      data.pathStr, bus,
+                                      std::variant<std::string>(
+                                          "xyz.openbmc_project.Common.Progress."
+                                          "OperationStatus.Failed"));
+                }
+            }
+            catch (const InternalFailure& e)
+            {
+                commit<InternalFailure>();
+            }
+            catch (const sdbusplus::exception::exception& e)
+            {
+                log<level::ERR>(fmt::format("Unable to update the dump status, "
+                                            "errorMsg({}) path({})",
+                                            e.what(), data.pathStr)
+                                    .c_str());
+                commit<InternalFailure>();
+            }
+
+            this->childPtrMap.erase(pid);
+        };
+
+        try
+        {
+            childPtrMap.emplace(pid,
+                                std::make_unique<Child>(eventLoop.get(), pid,
+                                                        WEXITED | WSTOPPED,
+                                                        std::move(callback)));
+        }
+        catch (const sdeventplus::SdEventError& ex)
         {
             // Failed to add to event loop
             log<level::ERR>(
                 fmt::format(
-                    "Error occurred during the sd_event_add_child call, rc({})",
-                    rc)
+                    "Error occurred during the  sdeventplus::source::Child "
+                    "call, ex({})",
+                    ex.what())
                     .c_str());
             elog<InternalFailure>();
         }

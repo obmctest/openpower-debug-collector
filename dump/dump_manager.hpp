@@ -10,6 +10,7 @@
 #include <xyz/openbmc_project/Dump/Create/server.hpp>
 
 #include <filesystem>
+#include <map>
 
 namespace openpower
 {
@@ -29,7 +30,7 @@ using EventPtr = std::unique_ptr<sd_event, EventDeleter>;
 using CreateIface = sdbusplus::server::object::object<
     sdbusplus::com::ibm::Dump::server::Create,
     sdbusplus::xyz::openbmc_project::Dump::server::Create>;
-
+using ::sdeventplus::source::Child;
 /** @class Manager
  *  @brief Dump  manager class
  *  @details A concrete implementation for the
@@ -70,6 +71,9 @@ class Manager : public CreateIface
 
     /** @brief sdbusplus Dump event loop */
     EventPtr eventLoop;
+
+    /** @brief map of SDEventPlus child pointer added to event loop */
+    std::map<pid_t, std::unique_ptr<Child>> childPtrMap;
 };
 
 } // namespace dump
