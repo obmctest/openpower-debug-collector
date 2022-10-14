@@ -36,9 +36,10 @@ namespace dump
 using namespace phosphor::logging;
 using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
-
 namespace sbe_chipop
 {
+constexpr auto SBEFIFO_CMD_CLASS_INSTRUCTION = 0xA700;
+constexpr auto SBEFIFO_CMD_CONTROL_INSN = 0x01;
 
 void collectDumpFromSBE(struct pdbg_target* proc,
                         const std::filesystem::path& path, const uint32_t id,
@@ -214,44 +215,83 @@ void collectDump(uint8_t type, uint32_t id, const uint64_t failingUnit,
         throw;
     }
 
+    std::vector<struct pdbg_target*> procList;
+
+    pdbg_for_each_class_target("proc", target)
+    {
+        uint32_t index = pdbg_target_index(target);
+        if (pdbg_target_probe(target) != PDBG_TARGET_ENABLED)
+        {
+            continue;
+        }
+        if (!openpower::phal::pdbg::isTgtFunctional(target))
+        {
+            if (openpower::phal::pdbg::isPrimaryProc(target))
+            {
+                // Primary processor is not functional
+                log<level::INFO>(
+                    fmt::format("Primary Processor({}) is not functional",
+                                index)
+                        .c_str());
+            }
+            continue;
+        }
+
+        // if the dump type is hostboot then call stop instructions
+        if (type == openpower::dump::SBE::SBE_DUMP_TYPE_HOSTBOOT)
+        {
+            try
+            {
+                openpower::phal::sbe::threadStopProc(target);
+            }
+            catch (const openpower::phal::sbeError_t& sbeError)
+            {
+                auto errType = sbeError.errType();
+                // Create PEL only for valid SBE reported failures
+                if (errType == openpower::phal::exception::SBE_CMD_FAILED)
+                {
+                    log<level::ERR>(
+                        fmt::format("Stop instructions failed, "
+                                    " on proc({}) error({}) error type({}), a "
+                                    "PELL will be logged",
+                                    index, sbeError.what(), errType)
+                            .c_str());
+                    uint32_t cmd = SBEFIFO_CMD_CLASS_INSTRUCTION |
+                                   SBEFIFO_CMD_CONTROL_INSN;
+                    // To store additional data about ffdc.
+                    openpower::dump::pel::FFDCData pelAdditionalData;
+                    // SRC6 : [0:15] chip position
+                    //        [16:23] command class,  [24:31] Type
+                    pelAdditionalData.emplace_back(
+                        "SRC6", std::to_string((index << 16) | cmd));
+
+                    // Create error log.
+                    openpower::dump::pel::createSbeErrorPEL(
+                        "org.open_power.Processor.Error.SbeChipOpFailure",
+                        sbeError, pelAdditionalData,
+                        openpower::dump::pel::Severity::Informational);
+                }
+                else
+                {
+                    log<level::INFO>(
+                        fmt::format("Stop instructions failed, "
+                                    " on proc({}) error({}) error type({})",
+                                    index, sbeError.what(), errType)
+                            .c_str());
+                }
+            }
+        }
+        procList.push_back(target);
+    }
+
     std::vector<uint8_t> clockStates = {SBE::SBE_CLOCK_ON, SBE::SBE_CLOCK_OFF};
     for (auto cstate : clockStates)
     {
         std::vector<pid_t> pidList;
-        pdbg_for_each_class_target("proc", target)
+        for (pdbg_target* procTarget : procList)
         {
-            if (pdbg_target_probe(target) != PDBG_TARGET_ENABLED)
-            {
-                continue;
-            }
-
-            bool primaryProc = false;
-            try
-            {
-                primaryProc = openpower::phal::pdbg::isPrimaryProc(target);
-            }
-            catch (const std::exception& e)
-            {
-                log<level::ERR>(
-                    fmt::format(
-                        "Error while checking for primary proc error({})",
-                        e.what())
-                        .c_str());
-                throw;
-            }
-
-            if (!openpower::phal::pdbg::isTgtFunctional(target))
-            {
-                if (primaryProc)
-                {
-                    // Primary processor is not functional
-                    log<level::INFO>("Primary Processor is not functional");
-                }
-                continue;
-            }
-
             uint32_t chipPos = 0;
-            if (DT_GET_PROP(ATTR_FAPI_POS, target, chipPos))
+            if (DT_GET_PROP(ATTR_FAPI_POS, procTarget, chipPos))
             {
                 log<level::ERR>("Attribute [ATTR_FAPI_POS] get failed");
                 throw std::runtime_error(
@@ -284,8 +324,8 @@ void collectDump(uint8_t type, uint32_t id, const uint64_t failingUnit,
             {
                 try
                 {
-                    collectDumpFromSBE(target, path, id, type, cstate, chipPos,
-                                       collectFastArray);
+                    collectDumpFromSBE(procTarget, path, id, type, cstate,
+                                       chipPos, collectFastArray);
                 }
                 catch (const std::runtime_error& error)
                 {
