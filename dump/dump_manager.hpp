@@ -63,7 +63,7 @@ class Manager : public CreateIface
      *  @param[in] event - sd event handler.
      */
     Manager(sdbusplus::bus::bus& bus, const char* path, const EventPtr& event) :
-        CreateIface(bus, path, true), bus(bus), eventLoop(event.get())
+        CreateIface(bus, path), bus(bus), eventLoop(event.get())
     {}
 
     /** @brief Implementation for createDump
