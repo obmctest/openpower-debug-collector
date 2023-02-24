@@ -4,15 +4,15 @@ conf_data = configuration_data()
 conf_data.set('bindir', get_option('prefix') / get_option('bindir'))
 
 configure_file(
-  input: 'org.open_power.Dump.Manager@.service.in',
-  output: 'org.open_power.Dump.Manager@.service',
+  input: 'org.open_power.Dump.Manager.service.in',
+  output: 'org.open_power.Dump.Manager.service',
   configuration: conf_data,
   install: true,
   install_dir: systemd_system_unit_dir)
 
 systemd_alias = [[
-    '../org.open_power.Dump.Manager@.service',
-    'obmc-host-startmin@0.target.wants/org.open_power.Dump.Manager@0.service'
+    '../org.open_power.Dump.Manager.service',
+    'obmc-host-startmin@0.target.wants/org.open_power.Dump.Manager.service'
 ]]
 
 foreach service: systemd_alias
