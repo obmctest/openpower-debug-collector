@@ -1,8 +1,12 @@
-#include "config.h"
-
 #include "dump_manager.hpp"
 
 #include <sdbusplus/bus.hpp>
+
+//The D-Bus root of openpower-dump-collector
+constexpr auto OP_DUMP_OBJPATH = "/org/openpower/dump";
+
+// The bus name of openpower-dump-collector
+constexpr auto OP_DUMP_BUSNAME = "org.open_power.Dump.Manager";
 
 int main()
 {

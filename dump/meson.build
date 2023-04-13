@@ -1,76 +1,121 @@
 # SPDX-License-Identifier: Apache-2.0
-cxx = meson.get_compiler('cpp')
 
-sdeventplus_dep = dependency('sdeventplus')
+unit_files += {'input': meson.current_source_dir()+'/clear_hostdumps_poweroff.service',
+         'output': 'clear_hostdumps_poweroff.service'}
 
-systemd_dep = dependency('systemd')
+# Configuration header file(openpower_dumps_config.h) generation
+opconf_data = configuration_data()
 
-dump_deps = [
-    systemd_dep,
-    sdbusplus_dep,
-    phosphor_dbus_interfaces_dep,
-    sdeventplus_dep,
-    fmt_dep,
-    phosphorlogging,
-]
+opconf_data.set_quoted('SYSTEM_DUMP_OBJPATH', get_option('SYSTEM_DUMP_OBJPATH'),
+                      description : 'The system dump manager D-Bus path'
+                    )
+opconf_data.set_quoted('SYSTEM_DUMP_OBJ_ENTRY', get_option('SYSTEM_DUMP_OBJ_ENTRY'),
+                      description : 'The system dump entry D-Bus object path'
+                    )
 
-collect_deps = [
-   fmt_dep,
-   phosphorlogging,
-   cxx.find_library('pdbg'),
-   cxx.find_library('libdt-api'),
-   cxx.find_library('phal'),
-]
+opconf_data.set_quoted('SYSTEM_DUMP_SERIAL_PATH', get_option('SYSTEM_DUMP_SERIAL_PATH'),
+                      description : 'The system dump D-Bus object persist path'
+                    )
 
-# Configuration header file(dump_config.h) generation
-dump_conf_data = configuration_data()
-dump_conf_data.set_quoted('OP_DUMP_OBJPATH', get_option('OP_DUMP_OBJPATH'),
-                     description : 'The D-Bus root of openpower-dump-collector')
-dump_conf_data.set_quoted('OP_DUMP_BUSNAME', get_option('OP_DUMP_BUSNAME'),
-                     description : 'The bus name of openpower-dump-collector')
-dump_conf_data.set_quoted('HB_DUMP_DBUS_OBJPATH', get_option('HB_DUMP_DBUS_OBJPATH'),
-                     description : 'The hostboot dump manager path')
-dump_conf_data.set_quoted('HB_DUMP_COLLECTION_PATH', get_option('HB_DUMP_COLLECTION_PATH'),
-                     description : 'The path to store collected hostboot dump files')
-dump_conf_data.set_quoted('HW_DUMP_DBUS_OBJPATH', get_option('HW_DUMP_DBUS_OBJPATH'),
-                     description : 'The hardware dump manager path')
-dump_conf_data.set_quoted('HW_DUMP_COLLECTION_PATH', get_option('HW_DUMP_COLLECTION_PATH'),
-                     description : 'The path to store collected hardware dump files')
-dump_conf_data.set_quoted('SBE_DUMP_DBUS_OBJPATH', get_option('SBE_DUMP_DBUS_OBJPATH'),
-                     description : 'The SBE dump manager path')
-dump_conf_data.set_quoted('SBE_DUMP_COLLECTION_PATH', get_option('SBE_DUMP_COLLECTION_PATH'),
-                     description : 'The path to store collected SBE dump files')
-configure_file(configuration : dump_conf_data,
-               output : 'config.h')
+opconf_data.set_quoted('RESOURCE_DUMP_OBJPATH', get_option('RESOURCE_DUMP_OBJPATH'),
+                      description : 'The resource dump manager D-Bus path'
+                    )
+opconf_data.set_quoted('RESOURCE_DUMP_OBJ_ENTRY', get_option('RESOURCE_DUMP_OBJ_ENTRY'),
+                      description : 'The resource dump entry D-Bus object path'
+                    )
+opconf_data.set_quoted('HOSTBOOT_DUMP_OBJPATH', get_option('HOSTBOOT_DUMP_OBJPATH'),
+                      description : 'The Hostboot dump manager D-Bus path'
+                    )
+opconf_data.set_quoted('HOSTBOOT_DUMP_OBJ_ENTRY', get_option('HOSTBOOT_DUMP_OBJ_ENTRY'),
+                      description : 'The hostboot dump entry D-Bus object path'
+                    )
+opconf_data.set_quoted('HOSTBOOT_DUMP_TMP_FILE_DIR', get_option('HOSTBOOT_DUMP_TMP_FILE_DIR'),
+                      description : 'Directory where hostboot dump pieces are stored for packaging'
+                    )
+opconf_data.set_quoted('HOSTBOOT_DUMP_PATH', get_option('HOSTBOOT_DUMP_PATH'),
+                     description : 'Directory where Hostboot dumps are placed'
+             )
+opconf_data.set('HOSTBOOT_DUMP_MAX_SIZE', get_option('HOSTBOOT_DUMP_MAX_SIZE'),
+               description : 'Maximum size of one Hostboot dump in kilo bytes'
+             )
+opconf_data.set('HOSTBOOT_DUMP_MIN_SPACE_REQD', get_option('HOSTBOOT_DUMP_MIN_SPACE_REQD'),
+               description : 'Minimum space required for one Hostboot dump in kilo bytes'
+             )
+opconf_data.set('HOSTBOOT_DUMP_TOTAL_SIZE', get_option('HOSTBOOT_DUMP_TOTAL_SIZE'),
+               description : 'Total size of the dump in kilo bytes'
+             )
+opconf_data.set('HOSTBOOT_DUMP_START_ID', get_option('HOSTBOOT_DUMP_START_ID'),
+               description : 'Starting id of Hostboot dump'
+            )
 
-# source files
-dump_src = files(
-    'dump_manager_main.cpp',
-    'dump_utils.cpp',
-    'dump_manager.cpp',
-)
+opconf_data.set_quoted('HARDWARE_DUMP_OBJPATH', get_option('HARDWARE_DUMP_OBJPATH'),
+                      description : 'The hardware dump manager D-Bus path'
+                    )
+opconf_data.set_quoted('HARDWARE_DUMP_OBJ_ENTRY', get_option('HARDWARE_DUMP_OBJ_ENTRY'),
+                      description : 'The hardware dump entry D-Bus object path'
+                    )
+opconf_data.set_quoted('HARDWARE_DUMP_TMP_FILE_DIR', get_option('HARDWARE_DUMP_TMP_FILE_DIR'),
+                      description : 'Directory where hardwre dump pieces are stored for packaging'
+                    )
+opconf_data.set_quoted('HARDWARE_DUMP_PATH', get_option('HARDWARE_DUMP_PATH'),
+                     description : 'Directory where hardware dumps are placed'
+             )
+opconf_data.set('HARDWARE_DUMP_MAX_SIZE', get_option('HARDWARE_DUMP_MAX_SIZE'),
+               description : 'Maximum size of one hardware dump in kilo bytes'
+             )
+opconf_data.set('HARDWARE_DUMP_MIN_SPACE_REQD', get_option('HARDWARE_DUMP_MIN_SPACE_REQD'),
+               description : 'Minimum space required for one hardware dump in kilo bytes'
+             )
+opconf_data.set('HARDWARE_DUMP_TOTAL_SIZE', get_option('HARDWARE_DUMP_TOTAL_SIZE'),
+               description : 'Total size of the dump in kilo bytes'
+            )
+opconf_data.set('HARDWARE_DUMP_START_ID', get_option('HARDWARE_DUMP_START_ID'),
+               description : 'Starting id of Hardware dump'
+            )
 
-collect_src = files(
-    'argument.cpp',
-    'dump_utils.cpp',
-    'dump_collect.cpp',
-    'dump_collect_main.cpp',
-    'create_pel.cpp',
-)
+opconf_data.set_quoted('SBE_DUMP_OBJPATH', get_option('SBE_DUMP_OBJPATH'),
+                      description : 'The SBE dump manager D-Bus path'
+                    )
+opconf_data.set_quoted('SBE_DUMP_OBJ_ENTRY', get_option('SBE_DUMP_OBJ_ENTRY'),
+                      description : 'The SBE dump entry D-Bus object path'
+                    )
+opconf_data.set_quoted('SBE_DUMP_TMP_FILE_DIR', get_option('SBE_DUMP_TMP_FILE_DIR'),
+                      description : 'Directory where SBE dump pieces are stored for packaging'
+                    )
+opconf_data.set_quoted('SBE_DUMP_PATH', get_option('SBE_DUMP_PATH'),
+                     description : 'Directory where SBE dumps are placed'
+             )
+opconf_data.set('SBE_DUMP_MAX_SIZE', get_option('SBE_DUMP_MAX_SIZE'),
+               description : 'Maximum size of one SBE dump in kilo bytes'
+             )
+opconf_data.set('SBE_DUMP_MIN_SPACE_REQD', get_option('SBE_DUMP_MIN_SPACE_REQD'),
+               description : 'Minimum space required for one SBE dump in kilo bytes'
+             )
+opconf_data.set('SBE_DUMP_TOTAL_SIZE', get_option('SBE_DUMP_TOTAL_SIZE'),
+               description : 'Total size of the dump in kilo bytes'
+            )
+opconf_data.set('SBE_DUMP_START_ID', get_option('SBE_DUMP_START_ID'),
+               description : 'Starting id of SBE dump'
+            )
+opconf_data.set_quoted('SYS_DUMP_FILENAME_REGEX', get_option('SYS_DUMP_FILENAME_REGEX'),
+                      description: 'System Dump filename format'
+            )
 
+opconf_data.set_quoted('RESOURCE_DUMP_SERIAL_PATH', get_option('RESOURCE_DUMP_SERIAL_PATH'),
+                      description : 'The resource dump D-Bus object persist path'
+                    )
 
-executable('openpower-dump-manager',
-    dump_src,
-    dependencies: dump_deps,
-    implicit_include_directories: true,
-    install: true
-)
+conf_files += {'conf' : opconf_data, 'header':'openpower_dumps_config.h'}
 
-executable('dump-collect',
-    collect_src,
-    dependencies: collect_deps,
-    implicit_include_directories: true,
-    install: true
-)
+phosphor_dump_manager_sources += [
+        meson.current_source_dir()+'/dump-extensions.cpp',
+        meson.current_source_dir()+'/dump_manager_system.cpp',
+        meson.current_source_dir()+'/system_dump_entry.cpp',
+        meson.current_source_dir()+'/dump_manager_resource.cpp',
+        meson.current_source_dir()+'/resource_dump_entry.cpp',
+        meson.current_source_dir()+'/op_dump_util.cpp',
+        meson.current_source_dir()+'/system_dump_serialize.cpp',
+        meson.current_source_dir()+'/resource_dump_serialize.cpp',
+    ]
 
-subdir('dist')
+subdir('dump-collect')

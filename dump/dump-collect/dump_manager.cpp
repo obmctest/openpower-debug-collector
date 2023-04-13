@@ -1,5 +1,3 @@
-#include "config.h"
-
 #include "dump_manager.hpp"
 
 #include "dump_utils.hpp"
@@ -31,6 +29,15 @@ constexpr auto ERROR_DUMP_QUOTA_EXCEEDED =
     "xyz.openbmc_project.Dump.Create.Error.QuotaExceeded";
 constexpr auto ERROR_DUMP_NOT_ALLOWED =
     "xyz.openbmc_project.Common.Error.NotAllowed";
+
+// The hostboot dump manager path
+constexpr auto HB_DUMP_DBUS_OBJPATH = "/xyz/openbmc_project/dump/hostboot";
+
+// The hardware dump manager path
+constexpr auto HW_DUMP_DBUS_OBJPATH = "/xyz/openbmc_project/dump/hardware";
+
+// The SBE dump manager path
+constexpr auto SBE_DUMP_DBUS_OBJPATH = "/xyz/openbmc_project/dump/sbe";
 
 std::unordered_map<std::string, std::string> dumpTypeMap = {
     {"com.ibm.Dump.Create.DumpType.Hostboot", HB_DUMP_DBUS_OBJPATH},
